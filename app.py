@@ -1,0 +1,56 @@
+from flask import Flask, request, jsonify
+import requests
+
+app = Flask(__name__)
+
+VERIFY_TOKEN = "vivian_webhook_2024"
+ACCESS_TOKEN = "IGAAXPrqTf5ZBhBZAFlaWHE1VHRVc3V1UHB5c2pHb3ByckpSYm9oLXQtQjh5LUZAQeEZA3WVFwenFKS2JXWjJjU3ZA5dHhrcW9QZADVQTmtzdzNad3BGMXVpWDQ5bDQ5aGItdTZAoaDVTbjZAaYUFMY2xrWVZAmNDNQbHJ5NU1SZATZAoc1AwcwZDZD "
+
+LAZY_PACK_MESSAGE = """📦 感謝你的留言！這是我準備的懶人包：
+
+💡 重點1：（你的內容）
+💡 重點2：（你的內容）
+💡 重點3：（你的內容）
+
+🔗 更多資訊：（你的連結）
+
+有任何問題歡迎繼續私訊我 😊"""
+
+KEYWORDS = ["懶人包", "+1", "資料", "想要"]
+
+@app.route("/webhook", methods=["GET"])
+def verify():
+    mode = request.args.get("hub.mode")
+    token = request.args.get("hub.verify_token")
+    challenge = request.args.get("hub.challenge")
+    if mode == "subscribe" and token == VERIFY_TOKEN:
+        return challenge, 200
+    return "驗證失敗", 403
+
+@app.route("/webhook", methods=["POST"])
+def webhook():
+    data = request.get_json()
+    if data.get("object") == "instagram":
+        for entry in data.get("entry", []):
+            for change in entry.get("changes", []):
+                if change.get("field") == "comments":
+                    comment_data = change.get("value", {})
+                    comment_text = comment_data.get("text", "").lower()
+                    commenter_id = comment_data.get("from", {}).get("id")
+                    if any(k in comment_text for k in KEYWORDS):
+                        if commenter_id:
+                            send_dm(commenter_id, LAZY_PACK_MESSAGE)
+    return jsonify({"status": "ok"}), 200
+
+def send_dm(user_id, message):
+    url = "https://graph.instagram.com/v21.0/me/messages"
+    payload = {
+        "recipient": {"id": user_id},
+        "message": {"text": message},
+        "access_token": ACCESS_TOKEN
+    }
+    r = requests.post(url, json=payload)
+    print(f"傳送結果: {r.status_code}, {r.text}")
+
+if __name__ == "__main__":
+    app.run(port=5000, debug=True)
