@@ -53,4 +53,7 @@ def send_dm(user_id, message):
     print(f"傳送結果: {r.status_code}, {r.text}")
 
 if __name__ == "__main__":
-    app.run(port=5000, debug=True)
+    import os
+port = int(os.environ.get('PORT', 5000))
+app.run(host='0.0.0.0', port=port, debug=False)
+
