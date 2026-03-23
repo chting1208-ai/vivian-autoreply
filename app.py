@@ -6,15 +6,15 @@ app = Flask(__name__)
 VERIFY_TOKEN = "vivian_webhook_2024"
 ACCESS_TOKEN = "IGAAXPrqTf5ZBhBZAGI3QUdzNjZA4QlVHU29XRnd0Y2VDbUxDbll2N2Frai1lMDFVZAVlnZAjdUUWlsTTdUS0V2dDlqbXY3YXJBblRQSU1yY2pmUWpUZAGY4ZAEpvSHctbDVZANmpwMVVrazdTZAU1YdWhaRk5TeExEcjZAoaHBKaS00N1pEZAwZDZD"
 
-LAZY_PACK_MESSAGE = """📦 感謝你的留言！這是我準備的懶人包：
+LAZY_PACK_MESSAGE = """感謝你的私訊！這是我準備的懶人包：
 
-💡 重點1：（你的內容）
-💡 重點2：（你的內容）
-💡 重點3：（你的內容）
+重點1：（你的內容）
+重點2：（你的內容）
+重點3：（你的內容）
 
-🔗 更多資訊：（你的連結）
+更多資訊：（你的連結）
 
-有任何問題歡迎繼續私訊我 😊"""
+有任何問題歡迎繼續私訊我"""
 
 KEYWORDS = ["懶人包", "+1", "資料", "想要"]
 
@@ -33,23 +33,20 @@ def webhook():
     print("=== 收到 Webhook ===")
     if data.get("object") == "instagram":
         for entry in data.get("entry", []):
-            for change in entry.get("changes", []):
-                if change.get("field") == "comments":
-                    comment_data = change.get("value", {})
-                    comment_text = comment_data.get("text", "").lower()
-                    comment_id = comment_data.get("id")
-                    print(f"留言內容: {comment_text}")
-                    print(f"留言 ID: {comment_id}")
-                    if any(k in comment_text for k in KEYWORDS):
-                        if comment_id:
-                            print(f"準備傳送私訊回覆")
-                            send_private_reply(comment_id, LAZY_PACK_MESSAGE)
+            for msg_event in entry.get("messaging", []):
+                sender_id = msg_event.get("sender", {}).get("id")
+                msg_text = msg_event.get("message", {}).get("text", "").lower()
+                print(f"收到私訊: {msg_text} 來自: {sender_id}")
+                if any(k in msg_text for k in KEYWORDS):
+                    print(f"關鍵字符合！傳送懶人包")
+                    send_dm(sender_id, LAZY_PACK_MESSAGE)
     return jsonify({"status": "ok"}), 200
 
-def send_private_reply(comment_id, message):
-    url = f"https://graph.instagram.com/v21.0/{comment_id}/private_replies"
+def send_dm(user_id, message):
+    url = "https://graph.instagram.com/v21.0/me/messages"
     payload = {
-        "message": message,
+        "recipient": {"id": user_id},
+        "message": {"text": message},
         "access_token": ACCESS_TOKEN
     }
     r = requests.post(url, json=payload)
