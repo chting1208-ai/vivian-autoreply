@@ -1,7 +1,5 @@
 from flask import Flask, request, jsonify
 import requests
-import json
-import os
 
 app = Flask(__name__)
 
@@ -32,45 +30,32 @@ def verify():
 @app.route("/webhook", methods=["POST"])
 def webhook():
     data = request.get_json()
-    print(f"=== 收到 Webhook ===")
-    print(f"完整資料: {json.dumps(data, ensure_ascii=False)}")
-
+    print("=== 收到 Webhook ===")
     if data.get("object") == "instagram":
         for entry in data.get("entry", []):
-            print(f"entry: {json.dumps(entry, ensure_ascii=False)}")
             for change in entry.get("changes", []):
-                print(f"change field: {change.get('field')}")
                 if change.get("field") == "comments":
                     comment_data = change.get("value", {})
                     comment_text = comment_data.get("text", "").lower()
-                    commenter_id = comment_data.get("from", {}).get("id")
+                    comment_id = comment_data.get("id")
                     print(f"留言內容: {comment_text}")
-                    print(f"留言者 ID: {commenter_id}")
-                    keyword_match = any(k in comment_text for k in KEYWORDS)
-                    print(f"關鍵字符合: {keyword_match}")
-                    if keyword_match:
-                        if commenter_id:
-                            print(f"準備傳送 DM 給 {commenter_id}")
-                            send_dm(commenter_id, LAZY_PACK_MESSAGE)
-                        else:
-                            print("錯誤：找不到留言者 ID")
-    else:
-        print(f"非 instagram 物件: {data.get('object')}")
-
+                    print(f"留言 ID: {comment_id}")
+                    if any(k in comment_text for k in KEYWORDS):
+                        if comment_id:
+                            print(f"準備傳送私訊回覆")
+                            send_private_reply(comment_id, LAZY_PACK_MESSAGE)
     return jsonify({"status": "ok"}), 200
 
-def send_dm(user_id, message):
-    url = "https://graph.instagram.com/v21.0/me/messages"
+def send_private_reply(comment_id, message):
+    url = f"https://graph.instagram.com/v21.0/{comment_id}/private_replies"
     payload = {
-        "recipient": {"id": user_id},
-        "message": {"text": message},
+        "message": message,
         "access_token": ACCESS_TOKEN
     }
-    print(f"傳送 DM 到 URL: {url}")
-    print(f"recipient id: {user_id}")
     r = requests.post(url, json=payload)
     print(f"傳送結果: {r.status_code}, {r.text}")
 
 if __name__ == "__main__":
+    import os
     port = int(os.environ.get('PORT', 5000))
     app.run(host='0.0.0.0', port=port, debug=False)
