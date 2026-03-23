@@ -32,9 +32,12 @@ def webhook():
     data = request.get_json()
     print("=== 收到 Webhook ===")
     if data.get("object") == "instagram":
+        MY_ID = "17841401095939446"
         for entry in data.get("entry", []):
             for msg_event in entry.get("messaging", []):
                 sender_id = msg_event.get("sender", {}).get("id")
+                if sender_id == MY_ID:
+                    continue
                 msg_text = msg_event.get("message", {}).get("text", "").lower()
                 print(f"收到私訊: {msg_text} 來自: {sender_id}")
                 if any(k in msg_text for k in KEYWORDS):
