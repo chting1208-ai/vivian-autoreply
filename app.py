@@ -18,6 +18,9 @@ LAZY_PACK_MESSAGE = """感謝你的私訊！這是我準備的懶人包：
 
 KEYWORDS = ["懶人包", "+1", "資料", "想要"]
 
+# 用來記錄已處理過的訊息 ID（防止重複回覆）
+processed_message_ids = set()
+
 @app.route("/webhook", methods=["GET"])
 def verify():
     mode = request.args.get("hub.mode")
@@ -38,6 +41,15 @@ def webhook():
                 sender_id = msg_event.get("sender", {}).get("id")
                 if sender_id == MY_ID:
                     continue
+
+                # 取得訊息 ID，防止重複處理
+                msg_id = msg_event.get("message", {}).get("mid", "")
+                if msg_id and msg_id in processed_message_ids:
+                    print(f"已處理過此訊息，略過：{msg_id}")
+                    continue
+                if msg_id:
+                    processed_message_ids.add(msg_id)
+
                 msg_text = msg_event.get("message", {}).get("text", "").lower()
                 print(f"收到私訊: {msg_text} 來自: {sender_id}")
                 if any(k in msg_text for k in KEYWORDS):
