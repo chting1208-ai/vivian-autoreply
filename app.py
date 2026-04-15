@@ -1,4 +1,5 @@
 import os
+import random
 import requests
 from flask import Flask, request, jsonify
 from dotenv import load_dotenv
@@ -61,6 +62,29 @@ def send_follow_button(user_id: str):
 def send_content(user_id: str, content: dict):
     """發送最終懶人包內容"""
     send_message(user_id, content["content"])
+
+
+# 留言回覆的隨機文字
+COMMENT_REPLIES = [
+    "分享囉😻",
+    "已私訊給你🙋🏻‍♀️",
+    "快去收收訊息📩",
+]
+
+def reply_to_comment(comment_id: str):
+    """自動回覆貼文留言"""
+    access_token, _ = get_tokens()
+    url = f"https://graph.instagram.com/v21.0/{comment_id}/replies"
+    reply_text = random.choice(COMMENT_REPLIES)
+    payload = {
+        "message": reply_text,
+        "access_token": access_token,
+    }
+    response = requests.post(url, data=payload)
+    if response.status_code == 200:
+        print(f"[OK] 已回覆留言：{reply_text}")
+    else:
+        print(f"[ERROR] 回覆留言失敗: {response.status_code} {response.text}")
 
 
 @app.route("/health", methods=["GET"])
@@ -133,6 +157,9 @@ def handle_comment(value: dict):
 
     processed_comments.add(comment_id)
     print(f"[觸發] 關鍵字命中，留言：{comment_text!r}")
+
+    # 自動回覆留言
+    reply_to_comment(comment_id)
 
     # 發送第一則私訊
     send_message(commenter_id, content["initial_message"])
