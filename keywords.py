@@ -17,6 +17,11 @@ KEYWORD_CONTENT = {
         "initial_message": "嗨！想領取【預告登記懶人包】嗎？\n\n請先完成以下步驟：\n1️⃣ 追蹤金融女子薇薇安的帳號\n2️⃣ 追蹤後回覆「OK」\n\n完成後就會自動發送給你😚",
         "content": "已收到你的留言😻 預告登記懶人包來囉～\nhttps://gemini.google.com/share/8fbd9d02ab4b",
     },
+    "666": {
+        "name": "共同持有懶人包",
+        "initial_message": "嗨！想領取【共同持有懶人包】嗎？\n\n請先完成以下步驟：\n1️⃣ 追蹤金融女子薇薇安的帳號\n2️⃣ 追蹤後回覆「OK」\n\n完成後就會自動發送給你😚",
+        "content": "已收到您的留言💕\n夫妻共同持有懶人包來囉🏠\nhttps://gemini.google.com/share/f23a683b46a4",
+    },
     # ↓ 在這裡繼續新增更多關鍵字 ↓
 }
 
