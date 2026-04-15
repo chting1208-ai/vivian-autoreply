@@ -22,7 +22,7 @@ def get_tokens():
 
 
 def send_message(user_id: str, text: str):
-    """發送私訊給指定用戶"""
+    """發送私訊給指定用戶（用於回覆 OK 後的懶人包）"""
     access_token, ig_user_id = get_tokens()
     url = f"https://graph.instagram.com/v21.0/{ig_user_id}/messages"
     payload = {
@@ -38,6 +38,25 @@ def send_message(user_id: str, text: str):
             print(f"[ERROR] 私訊發送失敗: {response.status_code} {response.text}")
     except Exception as e:
         print(f"[ERROR] 私訊例外: {e}")
+
+
+def send_private_reply(comment_id: str, text: str):
+    """透過留言 ID 發送私訊（Private Reply，可突破 24 小時限制）"""
+    access_token, ig_user_id = get_tokens()
+    url = f"https://graph.instagram.com/v21.0/{ig_user_id}/messages"
+    payload = {
+        "recipient": {"comment_id": comment_id},
+        "message": {"text": text},
+        "access_token": access_token,
+    }
+    try:
+        response = requests.post(url, json=payload, timeout=10)
+        if response.status_code == 200:
+            print(f"[OK] 已發送 Private Reply 給留言 {comment_id}")
+        else:
+            print(f"[ERROR] Private Reply 失敗: {response.status_code} {response.text}")
+    except Exception as e:
+        print(f"[ERROR] Private Reply 例外: {e}")
 
 
 # 留言回覆的隨機文字
@@ -73,7 +92,7 @@ def process_comment(comment_id: str, commenter_id: str, content: dict):
     """背景處理：同時回覆留言 + 發送私訊（各自獨立，互不影響）"""
     # 各自跑獨立 thread，確保兩個都會執行
     t1 = threading.Thread(target=reply_to_comment, args=(comment_id,))
-    t2 = threading.Thread(target=send_message, args=(commenter_id, content["initial_message"]))
+    t2 = threading.Thread(target=send_private_reply, args=(comment_id, content["initial_message"]))
     t1.start()
     t2.start()
     t1.join()
