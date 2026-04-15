@@ -97,17 +97,17 @@ def handle_webhook():
 
     try:
         for entry in data.get("entry", []):
+
+            # ── 私訊觸發（entry.messaging 格式）──
+            for msg_event in entry.get("messaging", []):
+                handle_message(msg_event)
+
+            # ── 留言觸發（entry.changes 格式）──
             for change in entry.get("changes", []):
                 field = change.get("field")
                 value = change.get("value", {})
-
-                # ── 留言觸發 ──
                 if field == "comments":
                     handle_comment(value)
-
-                # ── 私訊觸發（回覆 OK 或按按鈕）──
-                elif field == "messages":
-                    handle_message(value)
 
     except Exception as e:
         print(f"[ERROR] 處理失敗: {e}")
