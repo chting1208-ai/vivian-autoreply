@@ -43,20 +43,6 @@ def send_message(user_id: str, text: str, quick_replies=None):
     return response
 
 
-def send_follow_button(user_id: str):
-    """發送「已追蹤」按鈕"""
-    quick_replies = [
-        {
-            "content_type": "text",
-            "title": "已追蹤 ✅",
-            "payload": "FOLLOWED_CONFIRMED",
-        }
-    ]
-    send_message(
-        user_id,
-        "還差一步！這個內容是專屬粉絲的 ✨\n\n追蹤我們之後，點擊下方按鈕確認 🎉",
-        quick_replies=quick_replies,
-    )
 
 
 def send_content(user_id: str, content: dict):
@@ -180,27 +166,15 @@ def handle_message(value: dict):
     if sender_id == ig_user_id:
         return
 
-    # 檢查是否為按鈕點擊（quick reply）
-    message = value.get("message", {})
-    quick_reply = message.get("quick_reply", {})
-
-    if quick_reply.get("payload") == "FOLLOWED_CONFIRMED":
-        # 用戶點了「已追蹤」按鈕
-        state = user_states.get(sender_id)
-        if state:
-            print(f"[按鈕] {sender_id} 點了已追蹤按鈕")
-            send_content(sender_id, state["content"])
-            del user_states[sender_id]
-        return
-
     # 檢查是否回覆「OK」
+    message = value.get("message", {})
     text = message.get("text", "").strip().lower()
-    if text in ["ok", "okay", "好", "好的", "已追蹤", "追蹤了"]:
+    if text in ["ok", "okay", "好", "好的", "已追蹤", "追蹤了", "ok!"]:
         state = user_states.get(sender_id)
         if state and state["step"] == "waiting_ok":
-            print(f"[OK] {sender_id} 回覆了 OK")
-            user_states[sender_id]["step"] = "waiting_button"
-            send_follow_button(sender_id)
+            print(f"[OK] {sender_id} 回覆了 OK，直接發送懶人包")
+            send_content(sender_id, state["content"])
+            del user_states[sender_id]
 
 
 if __name__ == "__main__":
