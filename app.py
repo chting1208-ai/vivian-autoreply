@@ -1,5 +1,6 @@
 import os
 import random
+import threading
 import requests
 from flask import Flask, request, jsonify
 from dotenv import load_dotenv
@@ -10,7 +11,6 @@ load_dotenv()
 app = Flask(__name__)
 
 # 追蹤每個用戶的狀態
-# { user_id: { "step": "waiting_ok" | "waiting_button", "content": {...} } }
 user_states = {}
 
 # 防止重複處理同一則留言
@@ -21,33 +21,23 @@ def get_tokens():
     return os.getenv("ACCESS_TOKEN"), os.getenv("IG_USER_ID")
 
 
-def send_message(user_id: str, text: str, quick_replies=None):
+def send_message(user_id: str, text: str):
     """發送私訊給指定用戶"""
     access_token, ig_user_id = get_tokens()
     url = f"https://graph.instagram.com/v21.0/{ig_user_id}/messages"
-
-    message = {"text": text}
-    if quick_replies:
-        message["quick_replies"] = quick_replies
-
     payload = {
         "recipient": {"id": user_id},
-        "message": message,
+        "message": {"text": text},
         "access_token": access_token,
     }
-    response = requests.post(url, json=payload)
-    if response.status_code == 200:
-        print(f"[OK] 已發送私訊給 {user_id}")
-    else:
-        print(f"[ERROR] 發送失敗: {response.status_code} {response.text}")
-    return response
-
-
-
-
-def send_content(user_id: str, content: dict):
-    """發送最終懶人包內容"""
-    send_message(user_id, content["content"])
+    try:
+        response = requests.post(url, json=payload, timeout=10)
+        if response.status_code == 200:
+            print(f"[OK] 已發送私訊給 {user_id}")
+        else:
+            print(f"[ERROR] 私訊發送失敗: {response.status_code} {response.text}")
+    except Exception as e:
+        print(f"[ERROR] 私訊例外: {e}")
 
 
 # 留言回覆的隨機文字
@@ -69,11 +59,31 @@ def reply_to_comment(comment_id: str):
         "message": reply_text,
         "access_token": access_token,
     }
-    response = requests.post(url, data=payload)
-    if response.status_code == 200:
-        print(f"[OK] 已回覆留言：{reply_text}")
-    else:
-        print(f"[ERROR] 回覆留言失敗: {response.status_code} {response.text}")
+    try:
+        response = requests.post(url, data=payload, timeout=10)
+        if response.status_code == 200:
+            print(f"[OK] 已回覆留言：{reply_text}")
+        else:
+            print(f"[ERROR] 回覆留言失敗: {response.status_code} {response.text}")
+    except Exception as e:
+        print(f"[ERROR] 回覆留言例外: {e}")
+
+
+def process_comment(comment_id: str, commenter_id: str, content: dict):
+    """背景處理：同時回覆留言 + 發送私訊（各自獨立，互不影響）"""
+    # 各自跑獨立 thread，確保兩個都會執行
+    t1 = threading.Thread(target=reply_to_comment, args=(comment_id,))
+    t2 = threading.Thread(target=send_message, args=(commenter_id, content["initial_message"]))
+    t1.start()
+    t2.start()
+    t1.join()
+    t2.join()
+
+    # 記錄用戶狀態（等待回覆 OK）
+    user_states[commenter_id] = {
+        "step": "waiting_ok",
+        "content": content,
+    }
 
 
 @app.route("/health", methods=["GET"])
@@ -104,28 +114,32 @@ def verify_webhook():
 
 @app.route("/webhook", methods=["POST"])
 def handle_webhook():
-    """接收 Instagram 通知"""
+    """接收 Instagram 通知 — 立即回應 Meta，背景處理"""
     data = request.get_json()
     print(f"[收到] {data}")
 
+    # 立刻回應 Meta（避免超時），背景處理實際邏輯
+    threading.Thread(target=process_webhook, args=(data,)).start()
+
+    return jsonify({"status": "ok"}), 200
+
+
+def process_webhook(data: dict):
+    """背景處理 Webhook 內容"""
     try:
         for entry in data.get("entry", []):
 
-            # ── 私訊觸發（entry.messaging 格式）──
+            # ── 私訊觸發 ──
             for msg_event in entry.get("messaging", []):
                 handle_message(msg_event)
 
-            # ── 留言觸發（entry.changes 格式）──
+            # ── 留言觸發 ──
             for change in entry.get("changes", []):
-                field = change.get("field")
-                value = change.get("value", {})
-                if field == "comments":
-                    handle_comment(value)
+                if change.get("field") == "comments":
+                    handle_comment(change.get("value", {}))
 
     except Exception as e:
-        print(f"[ERROR] 處理失敗: {e}")
-
-    return jsonify({"status": "ok"}), 200
+        print(f"[ERROR] 背景處理失敗: {e}")
 
 
 def handle_comment(value: dict):
@@ -147,17 +161,8 @@ def handle_comment(value: dict):
     processed_comments.add(comment_id)
     print(f"[觸發] 關鍵字命中，留言：{comment_text!r}")
 
-    # 自動回覆留言
-    reply_to_comment(comment_id)
-
-    # 發送第一則私訊
-    send_message(commenter_id, content["initial_message"])
-
-    # 記錄用戶狀態
-    user_states[commenter_id] = {
-        "step": "waiting_ok",
-        "content": content,
-    }
+    # 背景同時執行：回覆留言 + 發私訊
+    threading.Thread(target=process_comment, args=(comment_id, commenter_id, content)).start()
 
 
 def handle_message(value: dict):
@@ -169,15 +174,16 @@ def handle_message(value: dict):
     if sender_id == ig_user_id:
         return
 
-    # 檢查是否回覆「OK」
     message = value.get("message", {})
     text = message.get("text", "").strip().lower()
+
     if text in ["ok", "okay", "好", "好的", "已追蹤", "追蹤了", "ok!"]:
         state = user_states.get(sender_id)
         if state and state["step"] == "waiting_ok":
-            print(f"[OK] {sender_id} 回覆了 OK，直接發送懶人包")
-            send_content(sender_id, state["content"])
+            print(f"[OK] {sender_id} 回覆了 OK，發送懶人包")
+            content = state["content"]
             del user_states[sender_id]
+            threading.Thread(target=send_message, args=(sender_id, content["content"])).start()
 
 
 if __name__ == "__main__":
