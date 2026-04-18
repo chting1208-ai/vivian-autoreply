@@ -1,6 +1,8 @@
 import os
 import random
 import threading
+import time
+import queue
 import requests
 from flask import Flask, request, jsonify
 from dotenv import load_dotenv
@@ -15,6 +17,40 @@ user_states = {}
 
 # 防止重複處理同一則留言
 processed_comments = set()
+
+# 私訊排隊系統（超過速率限制時，任務排隊等待重試）
+dm_queue = queue.Queue()
+
+def dm_worker():
+    """背景工作：從佇列取出私訊任務，失敗時自動排隊重試"""
+    while True:
+        task = dm_queue.get()
+        func = task["func"]
+        args = task["args"]
+        retries = task.get("retries", 0)
+
+        try:
+            result = func(*args)
+            # 如果回傳 429（速率限制）或其他錯誤，等待後重試
+            if result and hasattr(result, 'status_code') and result.status_code == 429:
+                raise Exception("Rate limit hit")
+        except Exception as e:
+            if retries < 5:
+                wait_time = 60 * (retries + 1)  # 1分鐘、2分鐘...依序遞增
+                print(f"[RETRY] {func.__name__} 失敗，{wait_time}秒後重試（第{retries+1}次）: {e}")
+                time.sleep(wait_time)
+                dm_queue.put({"func": func, "args": args, "retries": retries + 1})
+            else:
+                print(f"[FAIL] {func.__name__} 重試5次仍失敗，放棄: {e}")
+        finally:
+            dm_queue.task_done()
+
+# 啟動背景 worker
+threading.Thread(target=dm_worker, daemon=True).start()
+
+def queue_dm(func, *args):
+    """把私訊任務加入排隊"""
+    dm_queue.put({"func": func, "args": args, "retries": 0})
 
 
 def get_tokens():
@@ -90,13 +126,11 @@ def reply_to_comment(comment_id: str):
 
 def process_comment(comment_id: str, commenter_id: str, content: dict):
     """背景處理：同時回覆留言 + 發送私訊（各自獨立，互不影響）"""
-    # 各自跑獨立 thread，確保兩個都會執行
-    t1 = threading.Thread(target=reply_to_comment, args=(comment_id,))
-    t2 = threading.Thread(target=send_private_reply, args=(comment_id, content["initial_message"]))
-    t1.start()
-    t2.start()
-    t1.join()
-    t2.join()
+    # 留言回覆：直接執行（速度快，優先完成）
+    reply_to_comment(comment_id)
+
+    # 私訊：走排隊系統（確保超量時也能補發）
+    queue_dm(send_private_reply, comment_id, content["initial_message"])
 
     # 記錄用戶狀態（等待回覆 OK）
     user_states[commenter_id] = {
@@ -202,7 +236,7 @@ def handle_message(value: dict):
             print(f"[OK] {sender_id} 回覆了 OK，發送懶人包")
             content = state["content"]
             del user_states[sender_id]
-            threading.Thread(target=send_message, args=(sender_id, content["content"])).start()
+            queue_dm(send_message, sender_id, content["content"])
 
 
 if __name__ == "__main__":
